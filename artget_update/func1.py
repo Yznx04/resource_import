@@ -3,15 +3,6 @@ from pathlib import Path
 from typing import Union
 
 import requests
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
-    TaskID,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
 
 
 class DownloadFileWithChuck:
@@ -20,34 +11,14 @@ class DownloadFileWithChuck:
         self.save_file = save_filename
         self.chuck_size = chuck_size
         self.file_size = 0
-        self.write_chuck = 1024 * 1024
+        self.write_chuck = 1024 * 1024 * 5
         self.ranges = []
-        self.task_start = False
-        self.progress = Progress(
-            TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
-            BarColumn(bar_width=None),
-            "[progress.percentage]{task.percentage:>3.1f}%",
-            "•",
-            DownloadColumn(),
-            "•",
-            TransferSpeedColumn(),
-            "•",
-            TimeRemainingColumn(),
-        )
-        self.task_id: TaskID = None
         self.init_downloader()
 
     def init_downloader(self):
         self.get_download_file_size()
         self.get_file_chuck()
         self.init_file()
-        self.init_progress()
-
-    def init_progress(self):
-        self.task_id: TaskID = self.progress.add_task(
-            f"{self.save_file}下载ing...", filename=self.save_file, start=False, total=self.file_size
-        )
-        self.progress.start_task(self.task_id)
 
     def init_file(self):
         """
@@ -88,27 +59,27 @@ class DownloadFileWithChuck:
         response = requests.get(self.url, headers=headers, stream=True)
         with open(self.save_file, "rb+") as file:
             file.seek(start)
-            for data in response.iter_content(self.chuck_size):
+            for data in response.iter_content(self.write_chuck):
                 file.write(data)
-                self.progress.update(self.task_id, advance=self.chuck_size)
 
     def start_download_file(self):
         from concurrent.futures import ThreadPoolExecutor
-        start_time = time.time()
         pool = ThreadPoolExecutor()
-        with self.progress:
-            for start, end in self.ranges:
-                pool.submit(self.download_file_with_chuck, start, end)
-        # download_size = 0
-        # while download_size < self.file_size:
-        #     download_size = Path(self.save_file).stat().st_size
-        #     print(f"文件总大小:{self.file_size},当前已经下载:{download_size},剩余:{self.file_size - download_size}")
-        end_time = time.time()
-        print(f"文件下载用时:{end_time - start_time}")
+        jobs = []
+        for start, end in self.ranges:
+            jobs.append(pool.submit(self.download_file_with_chuck, start, end))
+        download_size = 0
+        while download_size < self.file_size:
+            download_size = Path(self.save_file).stat().st_size
+            print(f"文件总大小:{self.file_size},当前已经下载:{download_size},剩余:{self.file_size - download_size}")
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     download = DownloadFileWithChuck(
         url="http://127.0.0.1:5555/api/v1/user/download/file/streaming", chuck_size=10, save_filename="Download.zip"
     )
     download.start_download_file()
+    end_time = time.time()
+    print(f"文件下载用时:{end_time - start_time}")
+ 
